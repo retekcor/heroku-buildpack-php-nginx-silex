@@ -31,6 +31,15 @@ http {
     root              /app/web/;
     index             index.php index.html index.htm;
 
+    location / {
+        index index.php;
+        if (-f $request_filename) {
+            break;
+        }
+        rewrite ^(.*)$ /index.php last;
+    }
+
+
     # Some basic cache-control for static files to be sent to the browser
     location ~* \.(?:ico|css|js|gif|jpeg|jpg|png)$ {
       expires         max;
