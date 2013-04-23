@@ -14,30 +14,29 @@ http {
   keepalive_timeout   65;
   gzip                on;
   access_log          off;
+  error_log           logs/error.log;
   proxy_max_temp_file_size	0;
   #fastcgi_max_temp_file_size	0;
   limit_conn_zone $binary_remote_addr zone=phplimit:1m; # define a limit bucket for PHP-FPM
   # don't use server listen port in redirects.
   port_in_redirect off;
 
+  # set $https only when SSL is actually used.
+  map $http_x_forwarded_proto $my_https {
+    default off;
+    https on;
+  }
+
   upstream php_fpm {
     server unix:/tmp/php-fpm.socket;
   }
 
+  root              /app/web/;
+  index             index.php index.html index.htm;
+
   server {
     listen            <%= ENV['PORT'] %>;
     server_name       _;
-
-    root              /app/web/;
-    index             index.php index.html index.htm;
-
-    location / {
-        index index.php;
-        if (-f $request_filename) {
-            break;
-        }
-        rewrite ^(.*)$ /index.php last;
-    }
 
 
     # Some basic cache-control for static files to be sent to the browser
@@ -69,8 +68,8 @@ http {
 
     # Status. /status.html uses /status
     location ~ ^/(status|ping)$ {
-      include         /app/vendor/nginx/conf/fastcgi_params;
-      fastcgi_param   HTTPS on; # force SSL
+      include         fastcgi_params;
+      fastcgi_param   HTTPS $my_https if_not_empty;
       fastcgi_pass    php_fpm;
       fastcgi_param   SCRIPT_FILENAME $document_root$fastcgi_script_name;
     }
@@ -79,6 +78,17 @@ http {
       stub_status on;
       access_log   off;
     }
+
+    # Silex or PHP Path Info rewrites
+    location / {
+        index index.php;
+        if (-f $request_filename) {
+            break;
+        }
+        rewrite ^(.*)$ /index.php last;
+    }
+
+
 
     #location / {
     #  # wordpress fancy rewrites
@@ -100,11 +110,13 @@ http {
     #  # }
     #}
 
+    include /app/conf/nginx.d/*.conf;
+
     location ~ .*\.php$ {
       try_files $uri =404;
       limit_conn phplimit 5; # limit to 5 concurrent users to PHP per IP.
-      include         /app/vendor/nginx/conf/fastcgi_params;
-      fastcgi_param   HTTPS on; # force SSL
+      include         fastcgi_params;
+      fastcgi_param   HTTPS $my_https if_not_empty;
       fastcgi_pass    php_fpm;
       fastcgi_param   SCRIPT_FILENAME $document_root$fastcgi_script_name;
     }
